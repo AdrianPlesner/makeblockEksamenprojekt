@@ -43,7 +43,8 @@ switch(state)
       Serial.print(table[1]);
       Serial.print(" " );
       Serial.println(table[2]);
-      state = table[0];    
+      state = table[0];
+      ctrlUS.getDist();
       Serial.print("Ultra Sonic Left ");
       Serial.println(ctrlUS.lDist);
       Serial.print("Ultra Sonic Front ");      
