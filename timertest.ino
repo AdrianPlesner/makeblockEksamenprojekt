@@ -4,7 +4,7 @@ void setup() {
   TCCR3A = 0;
   TCCR3B = 0;
   TCNT3 = 0;
-  OCR3A = 62499;
+  OCR3A = 62499; //Laver 1Hz interrupt
   TCCR3A |= (1 << WGM32);
   TCCR3B |= (1 << CS32);
   TIMSK3 |= (1 << OCIE3A);
