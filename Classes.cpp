@@ -1,6 +1,8 @@
 #include "Classes.h"
 #include <MeMegaPi.h>
 
+
+
 MeEncoderOnBoard motor1(SLOT1); //Front left
 MeEncoderOnBoard motor2(SLOT2); //Back left
 MeEncoderOnBoard motor3(SLOT3); //Back right
@@ -93,8 +95,8 @@ int aryIn[3][1] = { {0},
 int aryVel[4][1];
 
 
-float rToM = 0.523; //constant for calculating m/s from rpm
-float mToR = 2.63; //constant from calculation rpm from m/s
+float rToM = 0.523; //constant for calculating cm/s from rpm
+float mToR = 1.91; //constant from calculation rpm from cm/s
 
 //motor class memberfunctions
 
@@ -148,12 +150,22 @@ void motor::mStop()
   motor4.updateSpeed();
 }
 
-void motor::getVelocities(int ary[4])
+float motor::getVelocity(int i)
 {
-  ary[0] = motor1.getCurrentSpeed();
-  ary[1] = motor2.getCurrentSpeed();
-  ary[2] = motor3.getCurrentSpeed();
-  ary[3] = motor4.getCurrentSpeed();
+  switch(i)
+  {
+    case 1:
+      return motor1.getCurrentSpeed();
+    break;
+    case 2:
+      return motor2.getCurrentSpeed();
+    break;
+    case 3:
+      return motor3.getCurrentSpeed();
+    break;
+    case 4:
+      return motor4.getCurrentSpeed();
+  }
 }
 
 //Ultrasonicsensor class memberfunctions

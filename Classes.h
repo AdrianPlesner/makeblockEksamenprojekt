@@ -1,13 +1,15 @@
 #ifndef Classes_H
 #define Classes_H
 
+#include <MeEncoderOnBoard.h>
+
 class motor
 {
   public:
     void drive(int, int, int);
     void mStop();
     void Begin();
-    void getVelocities(int[4]);
+    float getVelocity(int);
   
 };
 
