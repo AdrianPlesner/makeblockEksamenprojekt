@@ -95,7 +95,7 @@ int aryIn[3][1] = { {0},
 int aryVel[4][1];
 
 
-float rToM = 0.523; //constant for calculating cm/s from rpm
+
 float mToR = 1.91; //constant from calculation rpm from cm/s
 
 //motor class memberfunctions
@@ -150,7 +150,7 @@ void motor::mStop()
   motor4.updateSpeed();
 }
 
-float motor::getVelocity(int i)
+int motor::getVelocity(int i)
 {
   switch(i)
   {
@@ -171,10 +171,19 @@ float motor::getVelocity(int i)
 //Ultrasonicsensor class memberfunctions
 
 //Function for getting current distances from sensors
-void USSens::getDist()
+int USSens::getDist(bool i) //input true for front distance and false for left distance
 {
   lDist = ultraSensorL.distanceCm();
   fDist = ultraSensorF.distanceCm();
+
+  if(i == true)
+  {
+    return ultraSensorL.distanceCm();
+  }
+  else
+  {
+    return ultraSensorF.distanceCm();
+  }
 }
 
 // Gyrosensor class memberfunctions
@@ -186,10 +195,11 @@ void gyroSens::begin()
 }
 
 //Function to get current rotation of the robot in the x-y plane
-void gyroSens::getRotation()
+int gyroSens::getRotation()
 {
   gyroSensor.update();
   rot = gyroSensor.getGyroZ();
+  return rot;
 }
 
 

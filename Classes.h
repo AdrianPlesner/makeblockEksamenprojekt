@@ -9,7 +9,7 @@ class motor
     void drive(int, int, int);
     void mStop();
     void Begin();
-    float getVelocity(int);
+    int getVelocity(int);
   
 };
 
@@ -19,7 +19,7 @@ class USSens
   int lDist;
   int fDist;
 
-  void getDist();
+  int getDist(bool);
   
 };
 
@@ -29,7 +29,7 @@ class gyroSens
     int rot;
   
     void begin();
-    void getRotation();
+    int getRotation();
   
 };
 

@@ -33,9 +33,31 @@ unsigned char table[16] = {0};
 
 int USoffset = 5; //Ultrasonic distance offset is 5 cm to robot border
 
-float encoderValue[100][4];
+//arrays of sensor values
+int encoderValue[100][4];
+int gyroValue[100];
 
 int encoderIndex = 0;
+
+// d+l = 19
+// Constant multiplication array for calculation wheel velocities
+int dirKin[3][4] = { {1, 1, 1, 1},
+                   {-1, 1, -1, 1},
+                   {-1/19, -1/19, 1/19, 1/19}
+                 };
+
+// Array of wanted velocities, xdot, ydot, phidot
+int aryEncoder[4][1] = { {0},
+                   {0},
+                   {0},
+                   {0}
+                 };
+// Array of resulting wheel velocities
+int aryWheel[3][1];
+
+int lastPos[3];
+
+int currentPos[3];
 
 void setup() {
   Serial.begin(115200);
@@ -43,6 +65,8 @@ void setup() {
   state = idle;
   Serial3.write(0);
   ctrlMotor.Begin();
+
+  noInterrupts(); //There should be no interrupts while the timer interrupt is initialized
   TCCR3A = 0;
   TCCR3B = 0;
   // initial counter value = 0
@@ -55,6 +79,7 @@ void setup() {
   TCCR3B |= (1 << CS31);
   //enable timer interrupt
   TIMSK3 |= (1 << OCIE3A);
+  interrupts(); //Interrupts can happen again now
   
 
 }
@@ -76,15 +101,15 @@ switch(state)
       Serial.print(" " );
       Serial.println(table[2]);
       state = table[0];  
-      ctrlUS.getDist();  
+        
       Serial.print("USl ");
-      Serial.println(ctrlUS.lDist);
+      Serial.println(ctrlUS.getDist(false));
       Serial.print("USf ");      
-      Serial.println(ctrlUS.fDist);
+      Serial.println(ctrlUS.getDist(true));
       
       break;
       
-    case manualDrive:
+    case manualDrive: // Manual drive directly drives from indputvalues Xm, Ym and PHIm
       /*Serial.println("in drive");
       Serial.println(table[0]);
       Serial.println(table[1]);
@@ -108,6 +133,16 @@ switch(state)
         case avoidObject:
 
         break;
+        case turnCorner:
+
+        break;
+        case correctError:
+
+        break;
+        case done:
+          state = idle;
+
+        break;
       }
       
 
@@ -121,23 +156,82 @@ switch(state)
 // REMINDER! Certain parts of the libraries/makeblock/src/utility/avr/servo.cpp library was removed in order to use this
 ISR(TIMER3_COMPA_vect) //short function for what happens at the interrupt
 {
-  Serial.print(ctrlMotor.getVelocity(1));
+  /*Serial.print(ctrlMotor.getVelocity(1));
   Serial.print(" ");
   Serial.print(ctrlMotor.getVelocity(2));
   Serial.print(" ");
   Serial.print(ctrlMotor.getVelocity(3));
   Serial.print(" ");
-  Serial.println(ctrlMotor.getVelocity(4));
-  /*for(int i = 0; i<4;i++)
+  Serial.println(ctrlMotor.getVelocity(4));*/
+  for(int i = 0; i<4;i++)
   {
     encoderValue[i][encoderIndex] = ctrlMotor.getVelocity(i+1);
-    Serial.print(ctrlMotor.getVelocity(i+1));
+    gyroValue[encoderIndex] = ctrlGyro.getRotation();
+    //Serial.print(ctrlMotor.getVelocity(i+1));
   }
-  Serial.println();
-  encoderIndex++;*/
+  //Serial.println();
+  encoderIndex++;
+}
+float rToM = 0.523; //constant for calculating cm/s from rpm
+
+void estimatePos() //Function to calculate the currentposition of the robot
+{
+  int motorVel[100][4];
+  int roboVel[100][3];
+  int resPos[3];
+  noInterrupts(); //there shoud be no interrupts as the encoder values are read
+  for(int i = 0; i < 100; i++)
+  {
+    for(int j = 0; j < 4; j++)
+    {
+      motorVel[i][j] = encoderValue[i][j] * rToM;
+    }
+  }
+  encoderIndex = 0;
+  interrupts();
+  for(int i = 0; i < 100; i++)
+  {
+    for(int j = 0; j < 4; j++)
+    {
+      aryEncoder[j][0] = motorVel[i][j];
+    }
+    calcWheelVel(dirKin, aryEncoder, aryWheel); //Calculating robot velocities from encoder velocities via direct kinematic model
+    for(int j = 0; j < 3; j++)
+    {
+      roboVel[i][j] = aryWheel[j][0];
+    }
+  }
+  for(int i = 0; i < 100; i++)
+  {
+    for(int j = 0; j < 3; j++)
+    {
+      resPos[j] = resPos[j] + roboVel[i][j]*0.01; //Calculating the difference in position from the sum of the velosities times the time interval
+    }
+  }
+  for(int i = 0; i < 3; i++)
+  {
+    currentPos[i] = currentPos[i] + resPos[i]; 
+  }
 }
 
 
+// Function for calculating wheel velocities
+void calcWheelVel(int matA[3][4], int matB[4][1], int resMat[3][1])
+{
+  double a = 0;
+  for(int i = 0; i < 3;i++)
+  {
+    for(int j = 0; j < 1; j++)
+    {
+      int a = 0;
+      for(int k = 0; k < 4; k++)
+      {
+        a += matA[i][k] * matB[k][j];
+      }
+      resMat[i][j] = a;
+    }
+  }  
+}
 
 
 
