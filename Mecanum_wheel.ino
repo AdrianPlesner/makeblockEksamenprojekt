@@ -122,10 +122,27 @@ switch(state)
 
     case automatic:
       //Collision scanner
+      estimatePos();
       switch (autostate)
       {
         case Begin:
-          
+        lastPos[0] = 0; lastPos[1] = 0; lastPos[2] = 0;
+          if(ctrlUS.getDist(true) > 10 && ctrlUS.getDist(false) > 10) //long distance to both walls
+          {
+            
+          }
+          else if(ctrlUS.getDist(true) > 10 && ctrlUS.getDist(false) <= 10) //only front distance is long
+          {
+            autostate = drive;
+          }
+          else if(ctrlUS.getDist(true) <= 10 && ctrlUS.getDist(false) > 10) //only left distance is long
+          {
+            
+          }
+          else //both left and front distances are short
+          {
+            autostate = turnCorner;
+          }
         break;
         case drive:
 
