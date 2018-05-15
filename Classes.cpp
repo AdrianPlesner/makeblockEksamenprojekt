@@ -127,6 +127,14 @@ void motor::drive(int vX, int vY, int vPhi)
   getMotorVel(aryA,aryIn,aryVel);
  
   //Applying calculated velocities to each motor multiplying with constant mToR to get motor indput 0-255
+  Serial.print("mot1: ");
+  Serial.println(aryVel[0][0] * mToR);
+  Serial.print("mot2: ");
+  Serial.println(aryVel[1][0] * mToR);
+  Serial.print("mot3: ");
+  Serial.println(aryVel[2][0] * mToR);
+  Serial.print("mot4: ");
+  Serial.println(aryVel[3][0] * mToR);
   motor1.setMotorPwm(-aryVel[0][0] * mToR);
   motor2.setMotorPwm(-aryVel[1][0] * mToR);
   motor3.setMotorPwm(aryVel[2][0] * mToR);
@@ -140,6 +148,7 @@ void motor::drive(int vX, int vY, int vPhi)
 //stopping all motors
 void motor::mStop()
 {
+ 
   motor1.setMotorPwm(0);
   motor2.setMotorPwm(0);
   motor3.setMotorPwm(0);
@@ -178,11 +187,11 @@ int USSens::getDist(bool i) //input true for front distance and false for left d
 
   if(i == true)
   {
-    return ultraSensorL.distanceCm();
+    return ultraSensorF.distanceCm();
   }
   else
   {
-    return ultraSensorF.distanceCm();
+    return ultraSensorL.distanceCm();
   }
 }
 
@@ -198,7 +207,11 @@ void gyroSens::begin()
 int gyroSens::getRotation()
 {
   gyroSensor.update();
-  rot = gyroSensor.getGyroZ();
+  rot = int(gyroSensor.getAngleZ());
+  if(rot < 0)
+  {
+    rot = 360 - (rot *-1);
+  }
   return rot;
 }
 

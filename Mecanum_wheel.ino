@@ -14,6 +14,7 @@ enum STATES
   idle,
   manualDrive,
   automatic,
+  test
 };
 STATES state;
 
@@ -59,26 +60,29 @@ int lastPos[3];
 
 int currentPos[3];
 
+bool testDrive = false;
+
 void setup() {
   Serial.begin(115200);
   Serial3.begin(115200);
   state = idle;
   Serial3.write(0);
   ctrlMotor.Begin();
+  ctrlGyro.begin();
 
   noInterrupts(); //There should be no interrupts while the timer interrupt is initialized
-  TCCR3A = 0;
-  TCCR3B = 0;
+  TCCR5A = 0;
+  TCCR5B = 0;
   // initial counter value = 0
-  TCNT3 = 0;
+  TCNT5 = 0;
   //Setting compare match register to 100 Hz
-  OCR3A = 19999;
+  OCR5A = 19999;
   // turn on CTC (compare mathc) mode
-  TCCR3A |= (1 << WGM32);
-  // Set CS31 bit for 8 bit prescaler
-  TCCR3B |= (1 << CS31);
+  TCCR5A |= (1 << WGM52);
+  // Set CS51 bit for 8 bit prescaler
+  TCCR5B |= (1 << CS51);
   //enable timer interrupt
-  TIMSK3 |= (1 << OCIE3A);
+  TIMSK5 |= (1 << OCIE5A);
   interrupts(); //Interrupts can happen again now
   
 
@@ -89,17 +93,19 @@ void loop() {
 switch(state)
   {
     case idle:
+    noInterrupts();
       ComReadData();
-      table[0] = 0; //state
+      table[0] = 2; //state
+      //for manual drive testing
       table[1] = 0; //x speed
       table[2] = 0; //y speed
       table[3] = 0; // rotational speed
       Serial.println("read data");  
-      Serial.print(table[0] );
+      /*Serial.print(table[0] );
       Serial.print(" " );
       Serial.print(table[1]);
       Serial.print(" " );
-      Serial.println(table[2]);
+      Serial.println(table[2]);*/
       state = table[0];  
         
       Serial.print("USl ");
@@ -110,26 +116,84 @@ switch(state)
       break;
       
     case manualDrive: // Manual drive directly drives from indputvalues Xm, Ym and PHIm
-      /*Serial.println("in drive");
-      Serial.println(table[0]);
-      Serial.println(table[1]);
-      Serial.println(table[2]);*/
-
+      Serial.println("in drive");
+      
+      
       ctrlMotor.drive(table[1],table[2],table[3]);
-
-      //state = idle;
+      
+      state = idle;
       break;
 
     case automatic:
+      interrupts();
+      delay(2000);
       //Collision scanner
       estimatePos();
       switch (autostate)
       {
         case Begin:
-        lastPos[0] = 0; lastPos[1] = 0; lastPos[2] = 0;
+        lastPos[0] = 0; lastPos[1] = 0; lastPos[2] = 0;  // resetting initial position values
           if(ctrlUS.getDist(true) > 10 && ctrlUS.getDist(false) > 10) //long distance to both walls
           {
+            if(ctrlUS.getDist(true) == 400 && ctrlUS.getDist(false) == 400) //No walls in reach
+            {
+              //Rotate to check for walls around
+              int startRot = ctrlGyro.getRotation(); // the rotation of the robot when the loop starts
+              bool ext = false; //should exit loop
+              ctrlMotor.drive(0,0,3);
+              do
+              {
+                if (ctrlUS.getDist(true) < 350)
+                {
+                  ext = true; // fund a wall
+                }
+                
+                if ((ctrlGyro.getRotation() - startRot) < 0 && (ctrlGyro.getRotation() - startRot) > -5)
+                {
+                  ext = true; // no wall found
+                }
+                
+              } while(ext == false);
+              ctrlMotor.mStop();
+              
+            }
+            //Drive to wall
+            ctrlMotor.drive(0,-80,0); //drive sideways
+            do
+            {
+              
+            }while(ctrlUS.getDist(0) > 50);
+            ctrlMotor.mStop();
             
+            //rotate to find shortest distance to wall; shortest direct line
+            int shortDist = ctrlUS.getDist(0);
+            ctrlMotor.drive(0,0,2);
+            delay(100);
+            bool ext = false;
+            do
+            {
+             if(ctrlUS.getDist(0) > shortDist)
+             {
+              ext = true;
+             }
+             else
+             {
+              shortDist = ctrlUS.getDist(0);
+             }
+             delay(50);
+              
+            }while(ext == false);
+            
+            ctrlMotor.mStop();
+            
+            //Drive close to wall
+            ctrlMotor.drive(0,-50,0);
+            do
+            {
+              
+            }while(ctrlUS.getDist(0) > 10);
+            ctrlMotor.mStop(); //At wall, start driving
+            autostate = drive;
           }
           else if(ctrlUS.getDist(true) > 10 && ctrlUS.getDist(false) <= 10) //only front distance is long
           {
@@ -137,12 +201,33 @@ switch(state)
           }
           else if(ctrlUS.getDist(true) <= 10 && ctrlUS.getDist(false) > 10) //only left distance is long
           {
+            //turn 90 degrees right
+            int targetPos = ctrlGyro.getRotation() - 90;
+            if(targetPos < 0)
+            {
+              targetPos = 360 + targetPos;
+              Serial.println(targetPos);
+            }
+            ctrlMotor.drive(0,0,-2);
+            bool ext = false; //should exit loop
+            do
+            {
+              if((ctrlGyro.getRotation() - targetPos) < 3 && (ctrlGyro.getRotation() - targetPos) > 0)
+              {
+                ext = true;
+              }
+            } while(ext == false);
+            ctrlMotor.mStop();
             
+            autostate = drive; //Ready to begin
           }
           else //both left and front distances are short
           {
             autostate = turnCorner;
           }
+          //drive to wall
+          
+          
         break;
         case drive:
 
@@ -162,8 +247,18 @@ switch(state)
         break;
       }
       
+    break;
+    case test :
+    
+    interrupts();
+    delay(100);
+      Serial.println(ctrlGyro.getRotation());
 
-      
+      if (testDrive == false)
+      {
+        ctrlMotor.drive(table[1],table[2],table[3]);
+        testDrive = true;
+      }
       
     break;
   }
@@ -171,24 +266,22 @@ switch(state)
 
 
 // REMINDER! Certain parts of the libraries/makeblock/src/utility/avr/servo.cpp library was removed in order to use this
-ISR(TIMER3_COMPA_vect) //short function for what happens at the interrupt
-{
-  /*Serial.print(ctrlMotor.getVelocity(1));
-  Serial.print(" ");
-  Serial.print(ctrlMotor.getVelocity(2));
-  Serial.print(" ");
-  Serial.print(ctrlMotor.getVelocity(3));
-  Serial.print(" ");
-  Serial.println(ctrlMotor.getVelocity(4));*/
+ISR(TIMER5_COMPA_vect) //short function for what happens at the interrupt
+{ 
+  if(encoderIndex == 99) {
+    encoderIndex = 0;
+  }
+  
   for(int i = 0; i<4;i++)
   {
     encoderValue[i][encoderIndex] = ctrlMotor.getVelocity(i+1);
-    gyroValue[encoderIndex] = ctrlGyro.getRotation();
-    //Serial.print(ctrlMotor.getVelocity(i+1));
+    
   }
-  //Serial.println();
+  //gyroValue[encoderIndex] = ctrlGyro.getRotation();
   encoderIndex++;
 }
+
+
 float rToM = 0.523; //constant for calculating cm/s from rpm
 
 void estimatePos() //Function to calculate the currentposition of the robot
