@@ -35,8 +35,8 @@ unsigned char table[16] = {0};
 int USoffset = 5; //Ultrasonic distance offset is 5 cm to robot border
 
 //arrays of sensor values
-int encoderValue[100][4];
-int gyroValue[100];
+int encoderValue[200][4];
+
 
 int encoderIndex = 0;
 
@@ -56,19 +56,26 @@ int aryEncoder[4][1] = { {0},
 // Array of resulting wheel velocities
 int aryWheel[3][1];
 
-int lastPos[3];
+int lastPos[3]; //Last confrimed position x, y, phi
 
-int currentPos[3];
+int currentPos[3]; //Current calculated position
+
+int beginPos[3]; //Position 
+
+int runCount = 0; //Counter for number of rounds around the room, correlating distance to the walls
+
+bool turnDir; //When turning corners true for clockwise, false for counter-clockwise
 
 bool testDrive = false;
 
 void setup() {
+  
   Serial.begin(115200);
   Serial3.begin(115200);
   state = idle;
-  Serial3.write(0);
-  ctrlMotor.Begin();
+  Serial3.write(0);  
   ctrlGyro.begin();
+  ctrlMotor.Begin();
 
   noInterrupts(); //There should be no interrupts while the timer interrupt is initialized
   TCCR5A = 0;
@@ -93,46 +100,52 @@ void loop() {
 switch(state)
   {
     case idle:
-    noInterrupts();
+    {
+      //noInterrupts();
       ComReadData();
-      table[0] = 2; //state
+      table[0] = 3; //state
       //for manual drive testing
-      table[1] = 0; //x speed
-      table[2] = 0; //y speed
-      table[3] = 0; // rotational speed
-      Serial.println("read data");  
+      table[1] = 0; //x speed > 0 = forward, < 0 = backward
+      table[2] = 20; //y speed > 0 = right, < 0 = left
+      table[3] = 0; // rotational speed > 0 = counterclockwise, < 0 = clockwise
+     // Serial.println("read data");  
       /*Serial.print(table[0] );
       Serial.print(" " );
       Serial.print(table[1]);
       Serial.print(" " );
       Serial.println(table[2]);*/
       state = table[0];  
-        
+       /* 
       Serial.print("USl ");
       Serial.println(ctrlUS.getDist(false));
       Serial.print("USf ");      
-      Serial.println(ctrlUS.getDist(true));
+      Serial.println(ctrlUS.getDist(true));*/
+      } 
+    break;
       
-      break;
-      
-    case manualDrive: // Manual drive directly drives from indputvalues Xm, Ym and PHIm
-      Serial.println("in drive");
+    case manualDrive: // Manual drive directly drives from inputvalues Xm, Ym and PHIm
+    {
+      //Serial.println("in drive");
       
       
       ctrlMotor.drive(table[1],table[2],table[3]);
       
-      state = idle;
-      break;
+      //state = idle;
+    }
+    break;
 
     case automatic:
+    {
       interrupts();
       delay(2000);
       //Collision scanner
       estimatePos();
       switch (autostate)
       {
-        case Begin:
-        lastPos[0] = 0; lastPos[1] = 0; lastPos[2] = 0;  // resetting initial position values
+        case Begin: // the first state for locating a starting point
+        {
+          lastPos[0] = 0; lastPos[1] = 0; lastPos[2] = 0;  // resetting initial position values
+        
           if(ctrlUS.getDist(true) > 10 && ctrlUS.getDist(false) > 10) //long distance to both walls
           {
             if(ctrlUS.getDist(true) == 400 && ctrlUS.getDist(false) == 400) //No walls in reach
@@ -155,6 +168,7 @@ switch(state)
                 
               } while(ext == false);
               ctrlMotor.mStop();
+              estimatePos();
               
             }
             //Drive to wall
@@ -164,7 +178,7 @@ switch(state)
               
             }while(ctrlUS.getDist(0) > 50);
             ctrlMotor.mStop();
-            
+            estimatePos();
             //rotate to find shortest distance to wall; shortest direct line
             int shortDist = ctrlUS.getDist(0);
             ctrlMotor.drive(0,0,2);
@@ -185,6 +199,7 @@ switch(state)
             }while(ext == false);
             
             ctrlMotor.mStop();
+            estimatePos();
             
             //Drive close to wall
             ctrlMotor.drive(0,-50,0);
@@ -193,22 +208,99 @@ switch(state)
               
             }while(ctrlUS.getDist(0) > 10);
             ctrlMotor.mStop(); //At wall, start driving
+            estimatePos();
             autostate = drive;
           }
           else if(ctrlUS.getDist(true) > 10 && ctrlUS.getDist(false) <= 10) //only front distance is long
           {
             autostate = drive;
           }
-          else if(ctrlUS.getDist(true) <= 10 && ctrlUS.getDist(false) > 10) //only left distance is long
+          else //both left and front distances are short or only left distance is long
+          {
+            autostate = turnCorner;
+            turnDir = true;
+          }
+          estimatePos();
+          for(int i = 0; i < 3; i++) //Setting the position when driving began
+          {
+            beginPos[i] = currentPos[i];
+          }
+          
+        }
+        break;
+        case drive:
+        {
+          estimatePos();
+          int i = 0;
+          bool returned = false; 
+          do
+          {
+            if(lastPos[i] > (beginPos[i] - 3) && lastPos[i] < (beginPos[i] + 3))
+            {
+              returned = true;
+            }
+            else
+            {
+              i++;
+            }
+          }while(returned == false || i < 3);
+          
+          if(ctrlUS.getDist(1) < wallDist() && ctrlUS.getDist(0) < wallDist() + 5 && ctrlUS.getDist(0) > wallDist() - 5) //Distance to both sides is short, turn corner clockwsie
+          {
+            ctrlMotor.mStop();
+            autostate = turnCorner;
+            turnDir = true;
+          }
+          else if(ctrlUS.getDist(0) > (wallDist() + 10)) // suddenly very long left distance,  turn corner counter-clockwise
+          {
+            ctrlMotor.mStop();
+            autostate = turnCorner;
+            turnDir = false;
+          }
+          else if(ctrlUS.getDist(0) < wallDist - 5 || ctrlUS.getDist(0) > wallDist + 5)
+          {
+            autostate = correctError;
+          }
+          else if(returned)//Completed round
+          {
+            ctrlMotor.mStop();
+            
+            ctrlMotor.drive(0,50,0);
+            do // drive 5 cm in
+            {
+             delay(10); 
+            }while(ctrlUS.getDist(0) < (wallDist + 5));
+            ctrlMotor.mStop();
+            estimatePos();
+            for(int i = 0; i < 3; i++) //Set new begin position
+            {
+              beginPos[i] = lastPos[i];
+            }
+          }
+          else // drive
+          {
+            ctrlMotor.drive(100,0,0);
+          }
+          
+        }
+        break;
+        case avoidObject:
+        {
+          
+        }
+        break;
+        case turnCorner:
+        {
+          if(turnDir == true) //clockwise
           {
             //turn 90 degrees right
             int targetPos = ctrlGyro.getRotation() - 90;
             if(targetPos < 0)
             {
               targetPos = 360 + targetPos;
-              Serial.println(targetPos);
             }
             ctrlMotor.drive(0,0,-2);
+            estimatePos();
             bool ext = false; //should exit loop
             do
             {
@@ -217,49 +309,90 @@ switch(state)
                 ext = true;
               }
             } while(ext == false);
-            ctrlMotor.mStop();
             
-            autostate = drive; //Ready to begin
           }
-          else //both left and front distances are short
+          else //counter-clockwise
           {
-            autostate = turnCorner;
+            int targetPos = ctrlGyro.getRotation() + 90;
+            if(targetPos > 360)
+            {
+              targetPos = targetPos - 360;
+            }
+            ctrlMotor.drive(0,0,2);
+            estimatePos();
+            bool ext = false; //should exit loop
+            do
+            {
+              if((targetPos - ctrlGyro.getRotation()) < 3 && (ctrlGyro.getRotation() - targetPos) > 0)
+              {
+                ext = true;
+              }
+            } while(ext == false);
           }
-          //drive to wall
-          
-          
-        break;
-        case drive:
+          ctrlMotor.mStop();
+          estimatePos();
 
-        break;
-        case avoidObject:
-
-        break;
-        case turnCorner:
-
+          autostate = drive;
+        }
         break;
         case correctError:
-
+        {
+          
+        }
         break;
         case done:
+        { 
           state = idle;
-
+        }
         break;
       }
-      
+    }
     break;
     case test :
-    
-    interrupts();
-    delay(100);
-      Serial.println(ctrlGyro.getRotation());
+    {
+      interrupts();
+   // delay(100);
+      //Serial.println(ctrlGyro.getRotation());
 
       if (testDrive == false)
       {
         ctrlMotor.drive(table[1],table[2],table[3]);
         testDrive = true;
       }
+      delay(100);
+      for(int i = 1; i < 5; i++)
+      {
+        Serial.print(ctrlMotor.getVelocity(i));
+        Serial.print(", ");
+      }
+      Serial.println();
+      /*estimatePos();
+        Serial.print("Sxpos: ");
+        Serial.print(lastPos[0]);
+        Serial.print(" Sypos: ");
+        Serial.print(lastPos[1]);
+        Serial.print(" Srot: ");
+        Serial.println(lastPos[2]);
+      ctrlMotor.drive(80,0,0);
+      for(int i = 0; i < 100; i++)
+      {
+        delay(100);
+        if(ctrlUS.getDist(1) < 15)
+        {
+          ctrlMotor.mStop();
+        }
+        estimatePos();
+        Serial.print("xpos: ");
+        Serial.print(lastPos[0]);
+        Serial.print(" ypos: ");
+        Serial.print(lastPos[1]);
+        Serial.print(" rot: ");
+        Serial.println(lastPos[2]);
+      }
+      ctrlMotor.mStop();
+      state = manualDrive;*/
       
+    }
     break;
   }
 }
@@ -267,39 +400,50 @@ switch(state)
 
 // REMINDER! Certain parts of the libraries/makeblock/src/utility/avr/servo.cpp library was removed in order to use this
 ISR(TIMER5_COMPA_vect) //short function for what happens at the interrupt
-{ 
-  if(encoderIndex == 99) {
+{ /*
+  if(encoderIndex == 200) {
     encoderIndex = 0;
   }
   
-  for(int i = 0; i<4;i++)
+  for(int i = 0; i < 4; i++)
   {
     encoderValue[i][encoderIndex] = ctrlMotor.getVelocity(i+1);
-    
+    Serial.print(ctrlMotor.getVelocity(i+1));
+    Serial.print(", ");
   }
+  Serial.println();
   //gyroValue[encoderIndex] = ctrlGyro.getRotation();
-  encoderIndex++;
+  encoderIndex++;*/
 }
 
+int wallDist() // minimum wall distance
+{
+  return (10 + (runCount * 5));
+}
 
 float rToM = 0.523; //constant for calculating cm/s from rpm
 
 void estimatePos() //Function to calculate the currentposition of the robot
 {
-  int motorVel[100][4];
-  int roboVel[100][3];
-  int resPos[3];
+  int motorVel[200][4];
+  int roboVel[200][3];
+  float resPos[3];
   noInterrupts(); //there shoud be no interrupts as the encoder values are read
-  for(int i = 0; i < 100; i++)
+  for(int i = 0; i < 200; i++)
   {
-    for(int j = 0; j < 4; j++)
+    for(int j = 0; j < 2; j++) // these values are negative
+    {
+      motorVel[i][j] = -encoderValue[i][j] * rToM;
+    }
+    for(int j = 2; j < 4; j++) // these values are positive
     {
       motorVel[i][j] = encoderValue[i][j] * rToM;
     }
   }
   encoderIndex = 0;
   interrupts();
-  for(int i = 0; i < 100; i++)
+  
+  for(int i = 0; i < 200; i++)
   {
     for(int j = 0; j < 4; j++)
     {
@@ -311,17 +455,33 @@ void estimatePos() //Function to calculate the currentposition of the robot
       roboVel[i][j] = aryWheel[j][0];
     }
   }
-  for(int i = 0; i < 100; i++)
+
+  for(int i = 0; i < 200; i++)
   {
     for(int j = 0; j < 3; j++)
     {
-      resPos[j] = resPos[j] + roboVel[i][j]*0.01; //Calculating the difference in position from the sum of the velosities times the time interval
+      resPos[j] = resPos[j] + (roboVel[i][j]*0.01); //Calculating the difference in position from the sum of the velocities times the time interval
     }
+  }
+
+  for(int i = 0; i < 3; i++)
+  {
+    currentPos[i] = lastPos[i] + resPos[i]; 
+  }
+  if(currentPos[2] < (ctrlGyro.getRotation() + 5) && currentPos[2] > (ctrlGyro.getRotation() - 5) )// rotation calcutation correct
+  {
+
+    lastPos == currentPos;
+  }
+  else // calculation incorrect
+  {
+    
   }
   for(int i = 0; i < 3; i++)
   {
-    currentPos[i] = currentPos[i] + resPos[i]; 
+    lastPos[i] = currentPos[i];
   }
+   
 }
 
 
@@ -338,7 +498,7 @@ void calcWheelVel(int matA[3][4], int matB[4][1], int resMat[3][1])
       {
         a += matA[i][k] * matB[k][j];
       }
-      resMat[i][j] = a;
+      resMat[i][j] = a/4;
     }
   }  
 }
