@@ -105,7 +105,7 @@ switch(state)
     {
       //noInterrupts();
       ComReadData();
-      /*table[0] = 3; //state
+      table[0] = 3; //state
       //for manual drive testing
       table[1] = 50; //x speed > 0 = forward, < 0 = backward
       table[2] = 0; //y speed > 0 = right, < 0 = left
@@ -123,8 +123,10 @@ switch(state)
       
     case manualDrive: // Manual drive directly drives from inputvalues Xm, Ym and PHIm
     {
-      //Serial.println("in drive");
-     // ctrlMotor.drive(table[1],table[2],table[3]);
+      if(ctrlUS.getDist(0) > 10 || ctrlUS.getDist(1) > 10) // safety
+      {
+        table[1] = 0;
+      }
       switch(table[1])
       {
         case 1:
@@ -187,7 +189,7 @@ switch(state)
         }
         break;
       }
-      state = idle;
+      //state = idle;
     }
     break;
 
@@ -390,6 +392,7 @@ switch(state)
           }
           ctrlMotor.mStop();
           estimatePos();
+          
 
           autostate = drive;
         }
@@ -427,47 +430,37 @@ switch(state)
     {
       interrupts();
    // delay(100);
-      //Serial.println(ctrlGyro.getRotation());
       
-        ctrlMotor.drive(table[1],table[2],table[3]);
+        //ctrlMotor.drive(table[1],table[2],table[3]);
         delay(250);
         estimatePos();
-       /* 
-      delay(500);
-      estimatePos();
+        
+     //delay(500);
+      //estimatePos();
         Serial.print("Sxpos: ");
         Serial.print(lastPos[0]);
         Serial.print(" Sypos: ");
         Serial.print(lastPos[1]);
         Serial.print(" Srot: ");
         Serial.println(lastPos[2]);
-      ctrlMotor.drive(80,0,0);
+      ctrlMotor.drive(50,0,0);
       for(int i = 0; i < 20; i++)
       {
-        delay(100);
-        if(ctrlUS.getDist(1) < 15)
-        {
-          ctrlMotor.mStop();
-        }
-        for(int i = 0; i < 20; i++)
-        {
-          for(int j = 0; j < 4; j++)
-          {
-            Serial.print(encoderValue[i][j]);
-            Serial.print(" ,");
-          }
-          Serial.println();
-        }
-        estimatePos();
+        
+          estimatePos();
         Serial.print("xpos: ");
         Serial.print(lastPos[0]);
         Serial.print(" ypos: ");
         Serial.print(lastPos[1]);
         Serial.print(" rot: ");
         Serial.println(lastPos[2]);
+        delay(100);
+        
+        
       }
+    
       ctrlMotor.mStop();
-      state = manualDrive;*/
+      state = manualDrive;
       
     }
     break;
@@ -481,15 +474,14 @@ ISR(TIMER5_COMPA_vect) //short function for what happens at the interrupt
   if(encoderIndex == 200) {
     encoderIndex = 0;
   }
-  Serial.println(encoderIndex);
+  //Serial.println(encoderIndex);
   for(int i = 0; i < 4; i++)
   {
-    encoderValue[i][encoderIndex] = ctrlMotor.getVelocity(i+1);
-    Serial.print(encoderValue[i][encoderIndex]);
-    Serial.print(", ");
+    encoderValue[encoderIndex][i] = ctrlMotor.getVelocity(i+1);
+    //Serial.print(encoderValue[encoderIndex][i]);
+    //Serial.print(", ");
   }
-  Serial.println();
-  //gyroValue[encoderIndex] = ctrlGyro.getRotation();
+  //Serial.println();
   encoderIndex++;
 }
 
@@ -505,11 +497,10 @@ void estimatePos() //Function to calculate the currentposition of the robot
   int roboVel[200][3];
   float resPos[3] = {0,0,0};
   noInterrupts(); //there shoud be no interrupts as the encoder values are read
-  //Serial.println("motorVel: ");
+
   for(int i = 0; i < 200; i++)
   {
-    //Serial.print("index: ");
-    //Serial.println(i);
+  
     for(int j = 0; j < 2; j++) // these values are negative
     {
       if(encoderValue[i][j] == 0)
@@ -518,10 +509,8 @@ void estimatePos() //Function to calculate the currentposition of the robot
       }
       else
       {
-        motorVel[i][j] = -encoderValue[i][j] * rToM;
-       
+        motorVel[i][j] = -encoderValue[i][j];
       }
-      //Serial.println(motorVel[i][j]);
     }
     for(int j = 2; j < 4; j++) // these values are positive
     {
@@ -531,19 +520,14 @@ void estimatePos() //Function to calculate the currentposition of the robot
       }
       else
       {
-        motorVel[i][j] = encoderValue[i][j] * rToM;
-        
+        motorVel[i][j] = encoderValue[i][j];
       }
-      //Serial.println(motorVel[i][j]);
     }
   }
   encoderIndex = 0;
   interrupts();
-  //Serial.println("roboVel: ");
   for(int i = 0; i < 200; i++)
   {
-    //Serial.print("index: ");
-    //Serial.println(i);
     for(int j = 0; j < 4; j++)
     {
       aryEncoder[j][0] = motorVel[i][j];
@@ -552,35 +536,25 @@ void estimatePos() //Function to calculate the currentposition of the robot
     for(int j = 0; j < 3; j++)
     {
       roboVel[i][j] = aryWheel[j][0];
-      //Serial.println(roboVel[i][j]);
     }
   }
-  //Serial.println("resPos");
   for(int i = 0; i < 200; i++)
   {
-    //Serial.print("index: ");
-    //Serial.println(i);
     for(int j = 0; j < 3; j++)
     {
-      //Serial.print("next: ");
-      //Serial.println(j);
       if(roboVel[i][j] == 0)
       { 
         
       }
       else
       {
-        //Serial.println(roboVel[i][j]*0.01);
-        resPos[j] = resPos[j] + (roboVel[i][j]*0.1); //Calculating the total difference in position from the sum of the velocities times the time-interval
-        
+        resPos[j] = resPos[j] + (roboVel[i][j]*0.0155); //Calculating the total difference in position from the sum of the velocities times the time-interval
       }
-      //Serial.println(resPos[j]);
     }
   }
-  Serial.println("resPos: ");
+
   for(int i = 0; i < 3; i++)
   {
-    Serial.println(resPos[i]);
     currentPos[i] = lastPos[i] + resPos[i]; 
   }
 
