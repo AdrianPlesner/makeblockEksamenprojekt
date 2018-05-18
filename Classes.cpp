@@ -130,22 +130,19 @@ void motor::drive(int vX, int vY, int vPhi)
   getMotorVel(aryA,aryIn,aryVel);
  
   //Applying calculated velocities to each motor multiplying with constant mToR to get motor input 0-255
-  Serial.print("mot1: ");
+  /*Serial.print("mot1: ");
   Serial.println(aryVel[0][0] * mToR);
   Serial.print("mot2: ");
   Serial.println(aryVel[1][0] * mToR);
   Serial.print("mot3: ");
   Serial.println(aryVel[2][0] * mToR);
   Serial.print("mot4: ");
-  Serial.println(aryVel[3][0] * mToR);
+  Serial.println(aryVel[3][0] * mToR);*/
   motor1.setMotorPwm(-aryVel[0][0] * mToR);
   motor2.setMotorPwm(-aryVel[1][0] * mToR);
   motor3.setMotorPwm(aryVel[2][0] * mToR);
   motor4.setMotorPwm(aryVel[3][0] * mToR);
-  motor1.updateSpeed();
-  motor2.updateSpeed();
-  motor3.updateSpeed();
-  motor4.updateSpeed();
+
 }
 
 //stopping all motors
@@ -156,10 +153,6 @@ void motor::mStop()
   motor2.setMotorPwm(0);
   motor3.setMotorPwm(0);
   motor4.setMotorPwm(0);
-  motor1.updateSpeed();
-  motor2.updateSpeed();
-  motor3.updateSpeed();
-  motor4.updateSpeed();
 }
 
 int motor::getVelocity(int i)
@@ -167,15 +160,19 @@ int motor::getVelocity(int i)
   switch(i)
   {
     case 1:
+      motor1.updateSpeed();
       return int(motor1.getCurrentSpeed());
     break;
     case 2:
+      motor2.updateSpeed();
       return int(motor2.getCurrentSpeed());
     break;
     case 3:
+      motor3.updateSpeed();
       return int(motor3.getCurrentSpeed());
     break;
     case 4:
+      motor4.updateSpeed();
       return int(motor4.getCurrentSpeed());
     break;
   }

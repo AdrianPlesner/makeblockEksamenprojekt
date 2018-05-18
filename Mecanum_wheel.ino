@@ -56,15 +56,17 @@ int aryEncoder[4][1] = { {0},
 // Array of resulting wheel velocities
 int aryWheel[3][1];
 
-int lastPos[3]; //Last confrimed position x, y, phi
+float lastPos[3]; //Last confrimed position x, y, phi
 
-int currentPos[3]; //Current calculated position
+float currentPos[3]; //Current calculated position
 
-int beginPos[3]; //Position 
+float beginPos[3]; //Position 
 
 int runCount = 0; //Counter for number of rounds around the room, correlating distance to the walls
 
 bool turnDir; //When turning corners true for clockwise, false for counter-clockwise
+
+int targetPos; // The rotation the robot should have
 
 bool testDrive = false;
 
@@ -105,8 +107,8 @@ switch(state)
       ComReadData();
       table[0] = 3; //state
       //for manual drive testing
-      table[1] = 0; //x speed > 0 = forward, < 0 = backward
-      table[2] = 20; //y speed > 0 = right, < 0 = left
+      table[1] = 50; //x speed > 0 = forward, < 0 = backward
+      table[2] = 0; //y speed > 0 = right, < 0 = left
       table[3] = 0; // rotational speed > 0 = counterclockwise, < 0 = clockwise
      // Serial.println("read data");  
       /*Serial.print(table[0] );
@@ -128,7 +130,7 @@ switch(state)
       //Serial.println("in drive");
       
       
-      ctrlMotor.drive(table[1],table[2],table[3]);
+     // ctrlMotor.drive(table[1],table[2],table[3]);
       
       //state = idle;
     }
@@ -209,6 +211,7 @@ switch(state)
             }while(ctrlUS.getDist(0) > 10);
             ctrlMotor.mStop(); //At wall, start driving
             estimatePos();
+            targetPos = ctrlGyro.getRotation(); // setting target rotation
             autostate = drive;
           }
           else if(ctrlUS.getDist(true) > 10 && ctrlUS.getDist(false) <= 10) //only front distance is long
@@ -279,7 +282,8 @@ switch(state)
           }
           else // drive
           {
-            ctrlMotor.drive(100,0,0);
+            ctrlMotor.drive(75,0,0);
+            autostate = correctError;
           }
           
         }
@@ -294,7 +298,7 @@ switch(state)
           if(turnDir == true) //clockwise
           {
             //turn 90 degrees right
-            int targetPos = ctrlGyro.getRotation() - 90;
+            targetPos = ctrlGyro.getRotation() - 90;
             if(targetPos < 0)
             {
               targetPos = 360 + targetPos;
@@ -313,7 +317,7 @@ switch(state)
           }
           else //counter-clockwise
           {
-            int targetPos = ctrlGyro.getRotation() + 90;
+            targetPos = ctrlGyro.getRotation() + 90;
             if(targetPos > 360)
             {
               targetPos = targetPos - 360;
@@ -337,7 +341,23 @@ switch(state)
         break;
         case correctError:
         {
-          
+          if(ctrlGyro.getRotation() > targetPos +3)
+          {
+            do
+            {
+              ctrlMotor.drive(50,0,-1); //sligtly rotate
+              
+            }while(ctrlGyro.getRotation() > targetPos);
+          }
+          else if(ctrlGyro.getRotation() < targetPos - 3)
+          {
+            do
+            {
+              ctrlMotor.drive(50,0,1); // sligtly rotate
+              
+            }while(ctrlGyro.getRotation() < targetPos);
+          }
+          autostate = drive;
         }
         break;
         case done:
@@ -353,20 +373,13 @@ switch(state)
       interrupts();
    // delay(100);
       //Serial.println(ctrlGyro.getRotation());
-
-      if (testDrive == false)
-      {
+      
         ctrlMotor.drive(table[1],table[2],table[3]);
-        testDrive = true;
-      }
-      delay(100);
-      for(int i = 1; i < 5; i++)
-      {
-        Serial.print(ctrlMotor.getVelocity(i));
-        Serial.print(", ");
-      }
-      Serial.println();
-      /*estimatePos();
+        delay(250);
+        estimatePos();
+       /* 
+      delay(500);
+      estimatePos();
         Serial.print("Sxpos: ");
         Serial.print(lastPos[0]);
         Serial.print(" Sypos: ");
@@ -374,12 +387,21 @@ switch(state)
         Serial.print(" Srot: ");
         Serial.println(lastPos[2]);
       ctrlMotor.drive(80,0,0);
-      for(int i = 0; i < 100; i++)
+      for(int i = 0; i < 20; i++)
       {
         delay(100);
         if(ctrlUS.getDist(1) < 15)
         {
           ctrlMotor.mStop();
+        }
+        for(int i = 0; i < 20; i++)
+        {
+          for(int j = 0; j < 4; j++)
+          {
+            Serial.print(encoderValue[i][j]);
+            Serial.print(" ,");
+          }
+          Serial.println();
         }
         estimatePos();
         Serial.print("xpos: ");
@@ -400,20 +422,20 @@ switch(state)
 
 // REMINDER! Certain parts of the libraries/makeblock/src/utility/avr/servo.cpp library was removed in order to use this
 ISR(TIMER5_COMPA_vect) //short function for what happens at the interrupt
-{ /*
+{ 
   if(encoderIndex == 200) {
     encoderIndex = 0;
   }
-  
+  Serial.println(encoderIndex);
   for(int i = 0; i < 4; i++)
   {
     encoderValue[i][encoderIndex] = ctrlMotor.getVelocity(i+1);
-    Serial.print(ctrlMotor.getVelocity(i+1));
+    Serial.print(encoderValue[i][encoderIndex]);
     Serial.print(", ");
   }
   Serial.println();
   //gyroValue[encoderIndex] = ctrlGyro.getRotation();
-  encoderIndex++;*/
+  encoderIndex++;
 }
 
 int wallDist() // minimum wall distance
@@ -422,29 +444,51 @@ int wallDist() // minimum wall distance
 }
 
 float rToM = 0.523; //constant for calculating cm/s from rpm
-
 void estimatePos() //Function to calculate the currentposition of the robot
 {
   int motorVel[200][4];
   int roboVel[200][3];
-  float resPos[3];
+  float resPos[3] = {0,0,0};
   noInterrupts(); //there shoud be no interrupts as the encoder values are read
+  //Serial.println("motorVel: ");
   for(int i = 0; i < 200; i++)
   {
+    //Serial.print("index: ");
+    //Serial.println(i);
     for(int j = 0; j < 2; j++) // these values are negative
     {
-      motorVel[i][j] = -encoderValue[i][j] * rToM;
+      if(encoderValue[i][j] == 0)
+      {
+        motorVel[i][j] = 0;
+      }
+      else
+      {
+        motorVel[i][j] = -encoderValue[i][j] * rToM;
+       
+      }
+      //Serial.println(motorVel[i][j]);
     }
     for(int j = 2; j < 4; j++) // these values are positive
     {
-      motorVel[i][j] = encoderValue[i][j] * rToM;
+      if(encoderValue[i][j] == 0)
+      {
+        motorVel[i][j] = 0;
+      }
+      else
+      {
+        motorVel[i][j] = encoderValue[i][j] * rToM;
+        
+      }
+      //Serial.println(motorVel[i][j]);
     }
   }
   encoderIndex = 0;
   interrupts();
-  
+  //Serial.println("roboVel: ");
   for(int i = 0; i < 200; i++)
   {
+    //Serial.print("index: ");
+    //Serial.println(i);
     for(int j = 0; j < 4; j++)
     {
       aryEncoder[j][0] = motorVel[i][j];
@@ -453,30 +497,38 @@ void estimatePos() //Function to calculate the currentposition of the robot
     for(int j = 0; j < 3; j++)
     {
       roboVel[i][j] = aryWheel[j][0];
+      //Serial.println(roboVel[i][j]);
     }
   }
-
+  //Serial.println("resPos");
   for(int i = 0; i < 200; i++)
   {
+    //Serial.print("index: ");
+    //Serial.println(i);
     for(int j = 0; j < 3; j++)
     {
-      resPos[j] = resPos[j] + (roboVel[i][j]*0.01); //Calculating the difference in position from the sum of the velocities times the time interval
+      //Serial.print("next: ");
+      //Serial.println(j);
+      if(roboVel[i][j] == 0)
+      { 
+        
+      }
+      else
+      {
+        //Serial.println(roboVel[i][j]*0.01);
+        resPos[j] = resPos[j] + (roboVel[i][j]*0.1); //Calculating the total difference in position from the sum of the velocities times the time-interval
+        
+      }
+      //Serial.println(resPos[j]);
     }
   }
-
+  Serial.println("resPos: ");
   for(int i = 0; i < 3; i++)
   {
+    Serial.println(resPos[i]);
     currentPos[i] = lastPos[i] + resPos[i]; 
   }
-  if(currentPos[2] < (ctrlGyro.getRotation() + 5) && currentPos[2] > (ctrlGyro.getRotation() - 5) )// rotation calcutation correct
-  {
 
-    lastPos == currentPos;
-  }
-  else // calculation incorrect
-  {
-    
-  }
   for(int i = 0; i < 3; i++)
   {
     lastPos[i] = currentPos[i];
