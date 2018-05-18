@@ -105,7 +105,7 @@ switch(state)
     {
       //noInterrupts();
       ComReadData();
-      table[0] = 3; //state
+      /*table[0] = 3; //state
       //for manual drive testing
       table[1] = 50; //x speed > 0 = forward, < 0 = backward
       table[2] = 0; //y speed > 0 = right, < 0 = left
@@ -117,22 +117,77 @@ switch(state)
       Serial.print(" " );
       Serial.println(table[2]);*/
       state = table[0];  
-       /* 
-      Serial.print("USl ");
-      Serial.println(ctrlUS.getDist(false));
-      Serial.print("USf ");      
-      Serial.println(ctrlUS.getDist(true));*/
+
       } 
     break;
       
     case manualDrive: // Manual drive directly drives from inputvalues Xm, Ym and PHIm
     {
       //Serial.println("in drive");
-      
-      
      // ctrlMotor.drive(table[1],table[2],table[3]);
-      
-      //state = idle;
+      switch(table[1])
+      {
+        case 1:
+        {
+          ctrlMotor.mStop();
+        }
+        break;
+        case 2:
+        {
+          ctrlMotor.drive(table[2],0,0);
+        }
+        break;
+        case 3:
+        {
+          ctrlMotor.drive(-table[2],0,0);
+        }
+        break;
+        case 4:
+        {
+          ctrlMotor.drive(0,table[2],0);
+        }
+        break;
+        case 5:
+        {
+         ctrlMotor.drive(0,-table[2],0); 
+        }
+        break;
+        case 6:
+        {
+          ctrlMotor.drive(table[2]*0.5,-table[2]*0.5,0);
+        }
+        break;
+        case 7:
+        {
+          ctrlMotor.drive(table[2]*0.5,table[2]*0.5,0);
+        }
+        case 8:
+        {
+          ctrlMotor.drive(-table[2]*0.5, -table[2]*0.5,0);
+        }
+        break;
+        case 9:
+        {
+          ctrlMotor.drive(-table[2]*0.5, table[2]*0.5, 0);
+        }
+        break;
+        case 10:
+        {
+          ctrlMotor.drive(0,0,table[2]*0.1);
+        }
+        break;
+        case 11:
+        {
+          ctrlMotor.drive(0,0,-table[2]*0.1);
+        }
+        break;
+        default:
+        {
+          //send error message
+        }
+        break;
+      }
+      state = idle;
     }
     break;
 
