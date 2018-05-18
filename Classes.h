@@ -1,8 +1,6 @@
 #ifndef Classes_H
 #define Classes_H
 
-#include <MeEncoderOnBoard.h>
-
 class motor
 {
   public:

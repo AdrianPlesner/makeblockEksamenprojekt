@@ -1,3 +1,4 @@
+
 #include "Classes.h"
 #include <MeMegaPi.h>
 
@@ -60,6 +61,7 @@ void isr_process_encoder4(void)
   }
 }
 
+
 // Function for calculating wheel velocities
 void getMotorVel(int matA[4][3], int matB[3][1], int resMat[4][1])
 {
@@ -96,13 +98,14 @@ int aryVel[4][1];
 
 
 
-float mToR = 1.91; //constant from calculation rpm from cm/s
+float mToR = 2.7; //constant for calculation rpm from cm/s and revert input to 0-255 max speed is 94 cm/s
 
 //motor class memberfunctions
 
 //Initialising encoders
 void motor::Begin()
 {
+  Serial.println("motorbegin");
   attachInterrupt(motor1.getIntNum(), isr_process_encoder1, RISING);
   attachInterrupt(motor2.getIntNum(), isr_process_encoder2, RISING);
   attachInterrupt(motor3.getIntNum(), isr_process_encoder3, RISING);
@@ -126,28 +129,30 @@ void motor::drive(int vX, int vY, int vPhi)
   //Calculating wheel velocities from robot velocities
   getMotorVel(aryA,aryIn,aryVel);
  
-  //Applying calculated velocities to each motor multiplying with constant mToR to get motor indput 0-255
+  //Applying calculated velocities to each motor multiplying with constant mToR to get motor input 0-255
+  /*Serial.print("mot1: ");
+  Serial.println(aryVel[0][0] * mToR);
+  Serial.print("mot2: ");
+  Serial.println(aryVel[1][0] * mToR);
+  Serial.print("mot3: ");
+  Serial.println(aryVel[2][0] * mToR);
+  Serial.print("mot4: ");
+  Serial.println(aryVel[3][0] * mToR);*/
   motor1.setMotorPwm(-aryVel[0][0] * mToR);
   motor2.setMotorPwm(-aryVel[1][0] * mToR);
   motor3.setMotorPwm(aryVel[2][0] * mToR);
   motor4.setMotorPwm(aryVel[3][0] * mToR);
-  motor1.updateSpeed();
-  motor2.updateSpeed();
-  motor3.updateSpeed();
-  motor4.updateSpeed();
+
 }
 
 //stopping all motors
 void motor::mStop()
 {
+ 
   motor1.setMotorPwm(0);
   motor2.setMotorPwm(0);
   motor3.setMotorPwm(0);
   motor4.setMotorPwm(0);
-  motor1.updateSpeed();
-  motor2.updateSpeed();
-  motor3.updateSpeed();
-  motor4.updateSpeed();
 }
 
 int motor::getVelocity(int i)
@@ -155,16 +160,21 @@ int motor::getVelocity(int i)
   switch(i)
   {
     case 1:
-      return motor1.getCurrentSpeed();
+      motor1.updateSpeed();
+      return int(motor1.getCurrentSpeed());
     break;
     case 2:
-      return motor2.getCurrentSpeed();
+      motor2.updateSpeed();
+      return int(motor2.getCurrentSpeed());
     break;
     case 3:
-      return motor3.getCurrentSpeed();
+      motor3.updateSpeed();
+      return int(motor3.getCurrentSpeed());
     break;
     case 4:
-      return motor4.getCurrentSpeed();
+      motor4.updateSpeed();
+      return int(motor4.getCurrentSpeed());
+    break;
   }
 }
 
@@ -178,11 +188,11 @@ int USSens::getDist(bool i) //input true for front distance and false for left d
 
   if(i == true)
   {
-    return ultraSensorL.distanceCm();
+    return ultraSensorF.distanceCm();
   }
   else
   {
-    return ultraSensorF.distanceCm();
+    return ultraSensorL.distanceCm();
   }
 }
 
@@ -198,7 +208,11 @@ void gyroSens::begin()
 int gyroSens::getRotation()
 {
   gyroSensor.update();
-  rot = gyroSensor.getGyroZ();
+  rot = int(gyroSensor.getAngleZ());
+  if(rot < 0)
+  {
+    rot = 360 - (rot *-1);
+  }
   return rot;
 }
 
