@@ -68,6 +68,8 @@ bool turnDir; //When turning corners true for clockwise, false for counter-clock
 
 int targetPos; // The rotation the robot should have
 
+float sensPos[3]; //last known sensor position, same robot position as lastpos
+
 bool testDrive = false;
 
 void setup() {
@@ -204,7 +206,9 @@ switch(state)
         case Begin: // the first state for locating a starting point
         {
           lastPos[0] = 0; lastPos[1] = 0; lastPos[2] = 0;  // resetting initial position values
-        
+
+          sensPos[0] = ctrlUS.getDist(1); sensPos[1] = ctrlUS.getDist(0); sensPos[2] = ctrlGyro.getRotation();
+       
           if(ctrlUS.getDist(true) > 10 && ctrlUS.getDist(false) > 10) //long distance to both walls
           {
             if(ctrlUS.getDist(true) == 400 && ctrlUS.getDist(false) == 400) //No walls in reach
@@ -496,9 +500,11 @@ void estimatePos() //Function to calculate the currentposition of the robot
   int motorVel[200][4];
   int roboVel[200][3];
   float resPos[3] = {0,0,0};
+  float newSens[3];
+  bool corCalc;
   noInterrupts(); //there shoud be no interrupts as the encoder values are read
-
-  for(int i = 0; i < 200; i++)
+  int index = encoderIndex;
+  for(int i = 0; i < index; i++)
   {
   
     for(int j = 0; j < 2; j++) // these values are negative
@@ -526,7 +532,7 @@ void estimatePos() //Function to calculate the currentposition of the robot
   }
   encoderIndex = 0;
   interrupts();
-  for(int i = 0; i < 200; i++)
+  for(int i = 0; i < index; i++)
   {
     for(int j = 0; j < 4; j++)
     {
@@ -538,7 +544,7 @@ void estimatePos() //Function to calculate the currentposition of the robot
       roboVel[i][j] = aryWheel[j][0];
     }
   }
-  for(int i = 0; i < 200; i++)
+  for(int i = 0; i < index; i++)
   {
     for(int j = 0; j < 3; j++)
     {
@@ -552,17 +558,71 @@ void estimatePos() //Function to calculate the currentposition of the robot
       }
     }
   }
-
+  //currentpos
   for(int i = 0; i < 3; i++)
   {
     currentPos[i] = lastPos[i] + resPos[i]; 
   }
-
-  for(int i = 0; i < 3; i++)
+  //keeping rotation position between 0-360
+  if(currentPos[2] > 360)
   {
-    lastPos[i] = currentPos[i];
+    do
+    {
+      currentPos[2] -= 360;
+    }while(currentPos[2] > 360);
   }
-   
+  else if (currentPos[2] < 0)
+  {
+    do
+    {
+      currentPos[2] += 360;
+    }while(currentPos[2] < 0);
+    
+  }
+  //calculate sensor position
+  newSens[0] = lastPos[0] + (sensPos[0] - ctrlUS.getDist(1));
+  newSens[1] = lastPos[1] + (sensPos[1] - ctrlUS.getDist(0));
+  newSens[2] = lastPos[2] + (ctrlGyro.getRotation() - sensPos[2]);
+  
+  int it = 0;
+  do //check if encoderposition and sensorposition are the same
+  {
+    
+    if(newSens[it] - currentPos[it] > 3 || newSens[it] - currentPos[it] < -3)
+    {
+      corCalc = true;
+    }
+    else
+    {
+      corCalc = false;
+    }
+  } while(corCalc == true && it < 3);
+
+  if( corCalc == true) //thay are equal
+  { 
+    for(int i = 0; i < 3; i++)
+    {
+      lastPos[i] = currentPos[i];
+    }
+   sensPos[0] = ctrlUS.getDist(1);
+   sensPos[1] = ctrlUS.getDist(0);
+   sensPos[2] = ctrlGyro.getRotation();
+  }
+  else if(newSens[it] - currentPos[it] > 5 || newSens[it] - currentPos[it] < -5) // large difference, wheel error, sensors overrule
+  {
+    for(int i = 0; i < 3; i++)
+    {
+      lastPos[i] = newSens[i];
+    }
+    //send error
+  }
+  else //smal difference
+  {
+    for(int i = 0; i < 3; i++)
+    {
+      lastPos[i] = (currentPos[i]+newSens[i]) /2;
+    }
+  }
 }
 
 
@@ -583,8 +643,6 @@ void calcWheelVel(int matA[3][4], int matB[4][1], int resMat[3][1])
     }
   }  
 }
-
-
 
 void ComReadData()
 {
