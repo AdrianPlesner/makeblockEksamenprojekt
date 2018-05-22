@@ -12,8 +12,8 @@ gyroSens ctrlGyro;
 enum STATES
 {
   idle,
-  manualDrive,
   automatic,
+  manualDrive,
   test
 };
 STATES state;
@@ -22,12 +22,13 @@ enum AUTOSTATES
 {
   Begin,
   drive,
-  avoidObject,
   turnCorner,
   correctError,
   done
 };
 AUTOSTATES autostate;
+
+
 
 unsigned char table[16] = {0}; 
 //int DSpeed = 0;
@@ -70,7 +71,7 @@ int targetPos; // The rotation the robot should have
 
 float sensPos[3]; //last known sensor position, same robot position as lastpos
 
-bool testDrive = false;
+bool returned = false; //returned to begin pos
 
 void setup() {
   
@@ -105,19 +106,7 @@ switch(state)
   {
     case idle:
     {
-      //noInterrupts();
       ComReadData();
-      table[0] = 3; //state
-      //for manual drive testing
-      table[1] = 50; //x speed > 0 = forward, < 0 = backward
-      table[2] = 0; //y speed > 0 = right, < 0 = left
-      table[3] = 0; // rotational speed > 0 = counterclockwise, < 0 = clockwise
-     // Serial.println("read data");  
-      /*Serial.print(table[0] );
-      Serial.print(" " );
-      Serial.print(table[1]);
-      Serial.print(" " );
-      Serial.println(table[2]);*/
       state = table[0];  
 
       } 
@@ -125,9 +114,9 @@ switch(state)
       
     case manualDrive: // Manual drive directly drives from inputvalues Xm, Ym and PHIm
     {
-      if(ctrlUS.getDist(0) > 10 || ctrlUS.getDist(1) > 10) // safety
+      if(ctrlUS.getDist(0) < 20 || ctrlUS.getDist(1) < 20) // safety
       {
-        table[1] = 0;
+        table[1] = 1;
       }
       switch(table[1])
       {
@@ -165,6 +154,7 @@ switch(state)
         {
           ctrlMotor.drive(table[2]*0.5,table[2]*0.5,0);
         }
+        break;
         case 8:
         {
           ctrlMotor.drive(-table[2]*0.5, -table[2]*0.5,0);
@@ -177,12 +167,12 @@ switch(state)
         break;
         case 10:
         {
-          ctrlMotor.drive(0,0,table[2]*0.1);
+          ctrlMotor.drive(0,0,table[2]*0.05);
         }
         break;
         case 11:
         {
-          ctrlMotor.drive(0,0,-table[2]*0.1);
+          ctrlMotor.drive(0,0,-table[2]*0.05);
         }
         break;
         default:
@@ -191,35 +181,39 @@ switch(state)
         }
         break;
       }
-      //state = idle;
+      state = idle;
     }
     break;
 
     case automatic:
     {
+      
       interrupts();
-      delay(2000);
+      //delay(2000);
       //Collision scanner
       estimatePos();
       switch (autostate)
       {
         case Begin: // the first state for locating a starting point
         {
+
           lastPos[0] = 0; lastPos[1] = 0; lastPos[2] = 0;  // resetting initial position values
 
           sensPos[0] = ctrlUS.getDist(1); sensPos[1] = ctrlUS.getDist(0); sensPos[2] = ctrlGyro.getRotation();
        
-          if(ctrlUS.getDist(true) > 10 && ctrlUS.getDist(false) > 10) //long distance to both walls
+          if(ctrlUS.getDist(1) > 15 && ctrlUS.getDist(0) > 15) //long distance to both walls
           {
-            if(ctrlUS.getDist(true) == 400 && ctrlUS.getDist(false) == 400) //No walls in reach
+
+            if(ctrlUS.getDist(1) == 400 && ctrlUS.getDist(0) == 400) //No walls in reach
             {
+
               //Rotate to check for walls around
               int startRot = ctrlGyro.getRotation(); // the rotation of the robot when the loop starts
               bool ext = false; //should exit loop
               ctrlMotor.drive(0,0,3);
               do
               {
-                if (ctrlUS.getDist(true) < 350)
+                if (ctrlUS.getDist(0) < 350)
                 {
                   ext = true; // fund a wall
                 }
@@ -234,48 +228,56 @@ switch(state)
               estimatePos();
               
             }
+            else if(ctrlUS.getDist(1) < 50 || ctrlUS.getDist(0) < 50)
+            {
+              //rotate to find shortest distance to wall; shortest direct line
+              int shortDist = ctrlUS.getDist(0);
+              ctrlMotor.drive(0,0,2);
+              delay(100);
+              bool ext = false;
+              do
+              {
+               if(ctrlUS.getDist(0) > shortDist)
+               {
+                ext = true;
+               }
+               else
+               {
+                shortDist = ctrlUS.getDist(0);
+               }
+               delay(50);
+                
+              }while(ext == false);
+              
+              ctrlMotor.mStop();
+              estimatePos();
+              
+              //Drive close to wall
+              ctrlMotor.drive(0,-35,0);
+              do
+              {
+
+              }while(ctrlUS.getDist(0) > 10);
+              ctrlMotor.mStop(); //At wall, start driving
+              estimatePos();
+              targetPos = ctrlGyro.getRotation(); // setting target rotation
+              autostate = drive;
+            }
+            
+            else if(ctrlUS.getDist(1) < ctrlUS.getDist(0))
+            {
+
+              ctrlMotor.drive(80,0,0);
+            }
             //Drive to wall
-            ctrlMotor.drive(0,-80,0); //drive sideways
-            do
+            else
             {
-              
-            }while(ctrlUS.getDist(0) > 50);
-            ctrlMotor.mStop();
-            estimatePos();
-            //rotate to find shortest distance to wall; shortest direct line
-            int shortDist = ctrlUS.getDist(0);
-            ctrlMotor.drive(0,0,2);
-            delay(100);
-            bool ext = false;
-            do
-            {
-             if(ctrlUS.getDist(0) > shortDist)
-             {
-              ext = true;
-             }
-             else
-             {
-              shortDist = ctrlUS.getDist(0);
-             }
-             delay(50);
-              
-            }while(ext == false);
-            
-            ctrlMotor.mStop();
+              ctrlMotor.drive(0,-80,0); //drive sideways
+            }
             estimatePos();
             
-            //Drive close to wall
-            ctrlMotor.drive(0,-50,0);
-            do
-            {
-              
-            }while(ctrlUS.getDist(0) > 10);
-            ctrlMotor.mStop(); //At wall, start driving
-            estimatePos();
-            targetPos = ctrlGyro.getRotation(); // setting target rotation
-            autostate = drive;
           }
-          else if(ctrlUS.getDist(true) > 10 && ctrlUS.getDist(false) <= 10) //only front distance is long
+          else if(ctrlUS.getDist(1) > 10 && ctrlUS.getDist(0) <= 10) //only front distance is long
           {
             autostate = drive;
           }
@@ -289,27 +291,33 @@ switch(state)
           {
             beginPos[i] = currentPos[i];
           }
-          
+          targetPos = ctrlGyro.getRotation();
+          autostate = drive;
         }
         break;
         case drive:
         {
           estimatePos();
-          int i = 0;
-          bool returned = false; 
-          do
-          {
-            if(lastPos[i] > (beginPos[i] - 3) && lastPos[i] < (beginPos[i] + 3))
-            {
-              returned = true;
-            }
-            else
-            {
-              i++;
-            }
-          }while(returned == false || i < 3);
           
-          if(ctrlUS.getDist(1) < wallDist() && ctrlUS.getDist(0) < wallDist() + 5 && ctrlUS.getDist(0) > wallDist() - 5) //Distance to both sides is short, turn corner clockwsie
+
+          if(returned)//Completed round
+          {
+            ctrlMotor.mStop();
+            
+            ctrlMotor.drive(0,50,0);
+            do // drive 5 cm in
+            {
+             delay(10); 
+            }while(ctrlUS.getDist(0) < (wallDist() + 5));
+            ctrlMotor.mStop();
+            estimatePos();
+            for(int i = 0; i < 3; i++) //Set new begin position
+            {
+              beginPos[i] = lastPos[i];
+            }
+            runCount++;
+          }
+          else if(ctrlUS.getDist(1) < wallDist() +3 && ctrlUS.getDist(0) < wallDist() + 3 ) //Distance to both sides is short, turn corner clockwsie
           {
             ctrlMotor.mStop();
             autostate = turnCorner;
@@ -321,36 +329,29 @@ switch(state)
             autostate = turnCorner;
             turnDir = false;
           }
-          else if(ctrlUS.getDist(0) < wallDist - 5 || ctrlUS.getDist(0) > wallDist + 5)
+          else if(ctrlUS.getDist(0) < wallDist() - 3 || ctrlUS.getDist(0) > wallDist() + 3)
           {
-            autostate = correctError;
+            //autostate = correctError;
           }
-          else if(returned)//Completed round
-          {
-            ctrlMotor.mStop();
-            
-            ctrlMotor.drive(0,50,0);
-            do // drive 5 cm in
-            {
-             delay(10); 
-            }while(ctrlUS.getDist(0) < (wallDist + 5));
-            ctrlMotor.mStop();
-            estimatePos();
-            for(int i = 0; i < 3; i++) //Set new begin position
-            {
-              beginPos[i] = lastPos[i];
-            }
-          }
+          
           else // drive
           {
             ctrlMotor.drive(75,0,0);
             autostate = correctError;
           }
-          
-        }
-        break;
-        case avoidObject:
-        {
+          int i = 0;
+          returned = false;
+          do
+          {
+            if(lastPos[i] > (beginPos[i] - 3) && lastPos[i] < (beginPos[i] + 3))
+            {
+              returned = true;
+            }
+            else
+            {
+              i++;
+            }
+          }while(returned == false && i < 3);
           
         }
         break;
@@ -364,7 +365,7 @@ switch(state)
             {
               targetPos = 360 + targetPos;
             }
-            ctrlMotor.drive(0,0,-2);
+            ctrlMotor.drive(0,0,-1);
             estimatePos();
             bool ext = false; //should exit loop
             do
@@ -383,7 +384,7 @@ switch(state)
             {
               targetPos = targetPos - 360;
             }
-            ctrlMotor.drive(0,0,2);
+            ctrlMotor.drive(0,0,1);
             estimatePos();
             bool ext = false; //should exit loop
             do
@@ -405,19 +406,42 @@ switch(state)
         {
           if(ctrlGyro.getRotation() > targetPos +3)
           {
+            ctrlMotor.drive(50,0,-0.6);
             do
             {
-              ctrlMotor.drive(50,0,-1); //sligtly rotate
-              
+               //sligtly rotate
+              delay(10);
             }while(ctrlGyro.getRotation() > targetPos);
           }
           else if(ctrlGyro.getRotation() < targetPos - 3)
           {
+            ctrlMotor.drive(50,0,0.6);
             do
             {
-              ctrlMotor.drive(50,0,1); // sligtly rotate
-              
-            }while(ctrlGyro.getRotation() < targetPos);
+               // sligtly rotate
+              delay(10);
+            }while(ctrlGyro.getRotation() < targetPos - 3);
+          }
+          else
+          {
+            if(ctrlUS.getDist(0) < wallDist() -3) // bad corner
+            {
+              targetPos -= 2;
+              ctrlMotor.drive(0,35,0);
+              do
+              {
+                delay(10);
+              }while(ctrlUS.getDist(0) < wallDist());
+            }
+            else if(ctrlUS.getDist(0) > wallDist() + 3)
+            {
+              targetPos += 2;
+              ctrlMotor.drive(0,-35,0);
+              do
+              {
+                delay(10);
+              }while(ctrlUS.getDist(0) > wallDist());
+            }
           }
           autostate = drive;
         }
@@ -427,47 +451,19 @@ switch(state)
           state = idle;
         }
         break;
+        default:
+        {
+          //send error
+          Serial.write(2);
+        }
       }
     }
     break;
-    case test :
+    default:
     {
-      interrupts();
-   // delay(100);
-      
-        //ctrlMotor.drive(table[1],table[2],table[3]);
-        delay(250);
-        estimatePos();
-        
-     //delay(500);
-      //estimatePos();
-        Serial.print("Sxpos: ");
-        Serial.print(lastPos[0]);
-        Serial.print(" Sypos: ");
-        Serial.print(lastPos[1]);
-        Serial.print(" Srot: ");
-        Serial.println(lastPos[2]);
-      ctrlMotor.drive(50,0,0);
-      for(int i = 0; i < 20; i++)
-      {
-        
-          estimatePos();
-        Serial.print("xpos: ");
-        Serial.print(lastPos[0]);
-        Serial.print(" ypos: ");
-        Serial.print(lastPos[1]);
-        Serial.print(" rot: ");
-        Serial.println(lastPos[2]);
-        delay(100);
-        
-        
-      }
-    
-      ctrlMotor.mStop();
-      state = manualDrive;
-      
+      //Send error
+      Serial.write(2);
     }
-    break;
   }
 }
 
@@ -578,7 +574,7 @@ void estimatePos() //Function to calculate the currentposition of the robot
       currentPos[2] += 360;
     }while(currentPos[2] < 0);
     
-  }
+  }/*
   //calculate sensor position
   newSens[0] = lastPos[0] + (sensPos[0] - ctrlUS.getDist(1));
   newSens[1] = lastPos[1] + (sensPos[1] - ctrlUS.getDist(0));
@@ -615,6 +611,7 @@ void estimatePos() //Function to calculate the currentposition of the robot
       lastPos[i] = newSens[i];
     }
     //send error
+    Serial.write(0);
   }
   else //smal difference
   {
@@ -622,7 +619,11 @@ void estimatePos() //Function to calculate the currentposition of the robot
     {
       lastPos[i] = (currentPos[i]+newSens[i]) /2;
     }
-  }
+  }*/
+  for(int i = 0; i < 3; i++)
+    {
+      lastPos[i] = currentPos[i];
+    }
 }
 
 
